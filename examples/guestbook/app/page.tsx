@@ -9,7 +9,7 @@ interface GuestbookEntry {
 }
 
 async function getEntries(): Promise<GuestbookEntry[]> {
-  const db = await createDb('guestbook');
+  const db = await createDb(process.env.TURSO_DATABASE!);
 
   // Create table if it doesn't exist
   await db.execute(`
@@ -39,7 +39,7 @@ async function addEntry(formData: FormData) {
 
   if (!name || !message) return;
 
-  const db = await createDb('guestbook');
+  const db = await createDb(process.env.TURSO_DATABASE!);
   await db.execute(
     'INSERT INTO entries (name, message) VALUES (?, ?)',
     [name, message]

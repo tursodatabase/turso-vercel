@@ -66,15 +66,18 @@ npm install @tursodatabase/vercel-experimental
    ```
    TURSO_API_TOKEN=your-api-token
    TURSO_ORG=your-org-slug
+   TURSO_DATABASE=your-database-name
    ```
+
+> **Important:** Store `TURSO_DATABASE` as a secret environment variable in Vercel, just like your API token. The API token grants access to your entire Turso organization, so if an attacker can control the database name passed to `createDb()`, they could access any database in your org. By keeping the database name in a secret environment variable, you ensure it cannot be injected or tampered with.
 
 ## Quickstart
 
 ```ts
 import { createDb } from "@tursodatabase/vercel-experimental";
 
-// Get or create a database (automatic provisioning)
-const db = await createDb("my-database");
+// Get or create a database using the secret database name from environment
+const db = await createDb(process.env.TURSO_DATABASE!);
 
 // Create tables
 await db.execute(`
@@ -105,7 +108,7 @@ console.log(result.rows);
 Creates or retrieves a database instance.
 
 ```ts
-const db = await createDb("my-database", {
+const db = await createDb(process.env.TURSO_DATABASE!, {
   group: "default",        // Database group (optional)
   partialSync: true,       // Enable partial sync (optional)
 });
@@ -161,7 +164,7 @@ await db.pull(); // Get latest data from Turso
 import { createDb } from "@tursodatabase/vercel-experimental";
 
 async function getUsers() {
-  const db = await createDb("my-app");
+  const db = await createDb(process.env.TURSO_DATABASE!);
   const result = await db.query("SELECT * FROM users");
   return result.rows;
 }
@@ -189,7 +192,7 @@ async function addUser(formData: FormData) {
   "use server";
 
   const name = formData.get("name") as string;
-  const db = await createDb("my-app");
+  const db = await createDb(process.env.TURSO_DATABASE!);
 
   await db.execute("INSERT INTO users (name) VALUES (?)", [name]);
   await db.push();
@@ -205,7 +208,7 @@ import { createDb } from "@tursodatabase/vercel-experimental";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const db = await createDb("my-app");
+  const db = await createDb(process.env.TURSO_DATABASE!);
   const result = await db.query("SELECT * FROM users");
 
   return NextResponse.json(result.rows);
@@ -213,7 +216,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const { name } = await request.json();
-  const db = await createDb("my-app");
+  const db = await createDb(process.env.TURSO_DATABASE!);
 
   await db.execute("INSERT INTO users (name) VALUES (?)", [name]);
   await db.push();
