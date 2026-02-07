@@ -14,7 +14,6 @@ export interface QueryResult {
 }
 
 export interface DatabaseOptions {
-  partialSync?: boolean;
   bootstrapStrategy?: NonNullable<DatabaseOpts["partialSyncExperimental"]>["bootstrapStrategy"];
 }
 
@@ -62,13 +61,14 @@ export class TursoDatabase {
   ): Promise<TursoDatabase> {
     const opts: DatabaseOpts = { path: localPath, url, authToken };
 
-    if (options?.partialSync) {
-      opts.partialSyncExperimental = {
-        bootstrapStrategy: options.bootstrapStrategy ?? { kind: "prefix", length: 128 * 1024 },
-      };
-    }
+    opts.partialSyncExperimental = {
+      bootstrapStrategy: options?.bootstrapStrategy ?? { kind: "prefix", length: 128 * 1024 },
+      segmentSize: 128 * 1024,
+    };
 
-    return new TursoDatabase(name, await connect(opts));
+    const db = await connect(opts);
+    await db.pull();
+    return new TursoDatabase(name, db);
   }
 
   async query(sql: string, params?: unknown[]): Promise<QueryResult> {
