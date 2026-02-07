@@ -41,7 +41,7 @@
 
 - **Zero-config databases** &mdash; Databases are created automatically on first use
 - **Local SQLite** &mdash; Fast reads from a local database copy in the serverless function
-- **Automatic sync** &mdash; Writes are automatically pushed to Turso via Vercel's `waitUntil`
+- **Automatic sync** &mdash; Writes are automatically pushed to Turso when the database connection is closed
 - **Partial sync** &mdash; Sync only the data you need for efficient cold starts
 
 ## Install
@@ -94,8 +94,6 @@ await db.execute(
   ["Alice", "alice@example.com"]
 );
 
-// Changes sync automatically via waitUntil - no manual push needed!
-
 // Query data
 const result = await db.query("SELECT * FROM users");
 console.log(result.rows);
@@ -141,11 +139,11 @@ await db.execute(
 
 ### `db.push()`
 
-Manually push local changes to the remote Turso database. This is optional since changes are automatically synced via Vercel's `waitUntil`, but useful when you need to ensure data is synced before responding.
+Manually push local changes to the remote Turso database.
 
 ```ts
 await db.execute("INSERT INTO users (name) VALUES (?)", ["Charlie"]);
-await db.push(); // Explicit sync (optional - auto-sync happens via waitUntil)
+await db.push();
 ```
 
 ### `db.pull()`

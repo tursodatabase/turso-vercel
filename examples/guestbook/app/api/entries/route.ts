@@ -3,17 +3,20 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   const db = await createDb(process.env.TURSO_DATABASE!);
+  try {
+    const result = await db.query('SELECT id, name, message, created_at FROM entries ORDER BY id DESC LIMIT 50');
 
-  const result = await db.query('SELECT id, name, message, created_at FROM entries ORDER BY id DESC LIMIT 50');
+    const entries = result.rows.map(row => ({
+      id: row[0],
+      name: row[1],
+      message: row[2],
+      created_at: row[3],
+    }));
 
-  const entries = result.rows.map(row => ({
-    id: row[0],
-    name: row[1],
-    message: row[2],
-    created_at: row[3],
-  }));
-
-  return NextResponse.json(entries);
+    return NextResponse.json(entries);
+  } finally {
+    await db.close();
+  }
 }
 
 export async function POST(request: Request) {
@@ -24,12 +27,14 @@ export async function POST(request: Request) {
   }
 
   const db = await createDb(process.env.TURSO_DATABASE!);
-
-  await db.execute(
-    'INSERT INTO entries (name, message) VALUES (?, ?)',
-    [name, message]
-  );
-  await db.push();
+  try {
+    await db.execute(
+      'INSERT INTO entries (name, message) VALUES (?, ?)',
+      [name, message]
+    );
+  } finally {
+    await db.close();
+  }
 
   return NextResponse.json({ success: true });
 }
