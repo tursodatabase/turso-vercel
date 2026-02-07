@@ -33,25 +33,28 @@ interface Credentials {
 
 const instances = new Map<string, Promise<TursoDatabase>>();
 const credentials = new Map<string, Credentials>();
-const pendingFlush = new Set<TursoDatabase>();
+const connections = new Set<TursoDatabase>();
+const closeChecks = new Map<TursoDatabase, () => void>();
 
 let apiClient: ReturnType<typeof createClient> | null = null;
 let apiClientOrg: string | null = null;
-let flushScheduled = false;
 
 // ============================================================================
 // Database Class
 // ============================================================================
 
 export class TursoDatabase {
+  readonly name: string;
   private db: Database;
   private dirty = false;
 
-  private constructor(db: Database) {
+  private constructor(name: string, db: Database) {
+    this.name = name;
     this.db = db;
   }
 
   static async open(
+    name: string,
     localPath: string,
     url: string,
     authToken: string,
@@ -65,7 +68,7 @@ export class TursoDatabase {
       };
     }
 
-    return new TursoDatabase(await connect(opts));
+    return new TursoDatabase(name, await connect(opts));
   }
 
   async query(sql: string, params?: unknown[]): Promise<QueryResult> {
@@ -83,11 +86,7 @@ export class TursoDatabase {
     const stmt = this.db.prepare(sql);
     try {
       await stmt.run(...(params ?? []));
-      if (!this.dirty) {
-        this.dirty = true;
-        pendingFlush.add(this);
-        scheduleFlush();
-      }
+      this.dirty = true;
     } finally {
       stmt.close();
     }
@@ -97,15 +96,22 @@ export class TursoDatabase {
     if (!this.dirty) return;
     await this.db.push();
     this.dirty = false;
-    pendingFlush.delete(this);
   }
 
   async pull(): Promise<void> {
     await this.db.pull();
   }
 
-  isDirty(): boolean {
-    return this.dirty;
+  async close(): Promise<void> {
+    connections.delete(this);
+    closeChecks.get(this)?.();
+    closeChecks.delete(this);
+    try {
+      await this.push();
+    } finally {
+      instances.delete(this.name);
+      await this.db.close();
+    }
   }
 }
 
@@ -121,6 +127,24 @@ export function createDb(name: string, options?: CreateDbOptions): Promise<Turso
   instances.set(name, promise);
   promise.catch(() => instances.delete(name));
 
+  promise.then((db) => {
+    connections.add(db);
+    waitUntil(
+      new Promise<void>((resolve) => {
+        closeChecks.set(db, resolve);
+        setTimeout(resolve, 5000);
+      }).then(() => {
+        closeChecks.delete(db);
+        if (connections.has(db)) {
+          console.warn(
+            `Database "${db.name}" was not closed. ` +
+              "Call db.close() to ensure writes are pushed and errors are surfaced."
+          );
+        }
+      })
+    );
+  });
+
   return promise;
 }
 
@@ -131,7 +155,7 @@ export function createDb(name: string, options?: CreateDbOptions): Promise<Turso
 async function initDb(name: string, options?: CreateDbOptions): Promise<TursoDatabase> {
   const creds = await ensureDb(name, options?.group);
   const localPath = join(tmpdir(), `${name}.db`);
-  return TursoDatabase.open(localPath, creds.url, creds.authToken, options);
+  return TursoDatabase.open(name, localPath, creds.url, creds.authToken, options);
 }
 
 async function ensureDb(name: string, group?: string): Promise<Credentials> {
@@ -171,25 +195,6 @@ function getClient(): ReturnType<typeof createClient> {
   }
 
   return apiClient;
-}
-
-function scheduleFlush(): void {
-  if (flushScheduled) return;
-  flushScheduled = true;
-
-  waitUntil(
-    (async () => {
-      await Promise.resolve();
-      flushScheduled = false;
-
-      const dbs = Array.from(pendingFlush);
-      pendingFlush.clear();
-
-      await Promise.all(
-        dbs.map((db) => db.push().catch((err) => console.error("Failed to push database:", err)))
-      );
-    })()
-  );
 }
 
 function requireEnv(name: string): string {

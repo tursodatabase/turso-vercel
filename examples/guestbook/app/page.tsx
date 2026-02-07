@@ -1,6 +1,8 @@
 import { createDb } from '@tursodatabase/vercel-experimental';
 import { revalidatePath } from 'next/cache';
 
+export const dynamic = 'force-dynamic';
+
 interface GuestbookEntry {
   id: number;
   name: string;
@@ -10,25 +12,28 @@ interface GuestbookEntry {
 
 async function getEntries(): Promise<GuestbookEntry[]> {
   const db = await createDb(process.env.TURSO_DATABASE!);
+  try {
+    // Create table if it doesn't exist
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-  // Create table if it doesn't exist
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS entries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      message TEXT NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+    const result = await db.query('SELECT id, name, message, created_at FROM entries ORDER BY id DESC LIMIT 50');
 
-  const result = await db.query('SELECT id, name, message, created_at FROM entries ORDER BY id DESC LIMIT 50');
-
-  return result.rows.map(row => ({
-    id: row[0] as number,
-    name: row[1] as string,
-    message: row[2] as string,
-    created_at: row[3] as string,
-  }));
+    return result.rows.map(row => ({
+      id: row[0] as number,
+      name: row[1] as string,
+      message: row[2] as string,
+      created_at: row[3] as string,
+    }));
+  } finally {
+    await db.close();
+  }
 }
 
 async function addEntry(formData: FormData) {
@@ -40,11 +45,14 @@ async function addEntry(formData: FormData) {
   if (!name || !message) return;
 
   const db = await createDb(process.env.TURSO_DATABASE!);
-  await db.execute(
-    'INSERT INTO entries (name, message) VALUES (?, ?)',
-    [name, message]
-  );
-  await db.push();
+  try {
+    await db.execute(
+      'INSERT INTO entries (name, message) VALUES (?, ?)',
+      [name, message]
+    );
+  } finally {
+    await db.close();
+  }
 
   revalidatePath('/');
 }
