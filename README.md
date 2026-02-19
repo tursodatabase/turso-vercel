@@ -41,7 +41,7 @@
 
 - **Zero-config databases** &mdash; Databases are created automatically on first use
 - **Local SQLite** &mdash; Fast reads from a local database copy in the serverless function
-- **Automatic sync** &mdash; Writes are automatically pushed to Turso when the database connection is closed
+- **Remote writes** &mdash; Writes go directly to the remote Turso server, so they're durable immediately
 - **Partial sync** &mdash; Sync only the data you need for efficient cold starts
 
 ## Install
@@ -108,7 +108,6 @@ Creates or retrieves a database instance.
 ```ts
 const db = await createDb(process.env.TURSO_DATABASE!, {
   group: "default",        // Database group (optional)
-  partialSync: true,       // Enable partial sync (optional)
 });
 ```
 
@@ -139,9 +138,10 @@ await db.execute(
 
 ### `db.push()`
 
-Manually push local changes to the remote Turso database.
+Manually push local changes to the remote Turso database. Only needed when `remoteWrites` is disabled.
 
 ```ts
+const db = await createDb(process.env.TURSO_DATABASE!, { remoteWrites: false });
 await db.execute("INSERT INTO users (name) VALUES (?)", ["Charlie"]);
 await db.push();
 ```
@@ -193,7 +193,6 @@ async function addUser(formData: FormData) {
   const db = await createDb(process.env.TURSO_DATABASE!);
 
   await db.execute("INSERT INTO users (name) VALUES (?)", [name]);
-  await db.push();
 
   revalidatePath("/users");
 }
@@ -217,7 +216,6 @@ export async function POST(request: Request) {
   const db = await createDb(process.env.TURSO_DATABASE!);
 
   await db.execute("INSERT INTO users (name) VALUES (?)", [name]);
-  await db.push();
 
   return NextResponse.json({ success: true });
 }
