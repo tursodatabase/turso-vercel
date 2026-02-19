@@ -15,6 +15,8 @@ export interface QueryResult {
 
 export interface DatabaseOptions {
   bootstrapStrategy?: NonNullable<DatabaseOpts["partialSyncExperimental"]>["bootstrapStrategy"];
+  /** Route writes to the remote server instead of writing locally and pushing. Default: true. */
+  remoteWrites?: boolean;
 }
 
 export interface CreateDbOptions extends DatabaseOptions {
@@ -45,11 +47,13 @@ let apiClientOrg: string | null = null;
 export class TursoDatabase {
   readonly name: string;
   private db: Database;
+  private remoteWrites: boolean;
   private dirty = false;
 
-  private constructor(name: string, db: Database) {
+  private constructor(name: string, db: Database, remoteWrites: boolean) {
     this.name = name;
     this.db = db;
+    this.remoteWrites = remoteWrites;
   }
 
   static async open(
@@ -59,7 +63,8 @@ export class TursoDatabase {
     authToken: string,
     options?: DatabaseOptions
   ): Promise<TursoDatabase> {
-    const opts: DatabaseOpts = { path: localPath, url, authToken };
+    const remoteWrites = options?.remoteWrites !== false;
+    const opts: DatabaseOpts = { path: localPath, url, authToken, remoteWritesExperimental: remoteWrites };
 
     opts.partialSyncExperimental = {
       bootstrapStrategy: options?.bootstrapStrategy ?? { kind: "prefix", length: 128 * 1024 },
@@ -68,15 +73,15 @@ export class TursoDatabase {
 
     const db = await connect(opts);
     await db.pull();
-    return new TursoDatabase(name, db);
+    return new TursoDatabase(name, db, remoteWrites);
   }
 
   async query(sql: string, params?: unknown[]): Promise<QueryResult> {
     const stmt = this.db.prepare(sql);
     try {
-      const columns = stmt.columns().map((c) => c.name);
+      const columns = stmt.columns().map((c: { name: string }) => c.name);
       const rows = await stmt.all(...(params ?? []));
-      return { columns, rows: rows.map((row) => Object.values(row)) };
+      return { columns, rows: rows.map((row: Record<string, unknown>) => Object.values(row)) };
     } finally {
       stmt.close();
     }
@@ -86,14 +91,16 @@ export class TursoDatabase {
     const stmt = this.db.prepare(sql);
     try {
       await stmt.run(...(params ?? []));
-      this.dirty = true;
+      if (!this.remoteWrites) {
+        this.dirty = true;
+      }
     } finally {
       stmt.close();
     }
   }
 
   async push(): Promise<void> {
-    if (!this.dirty) return;
+    if (this.remoteWrites || !this.dirty) return;
     await this.db.push();
     this.dirty = false;
   }
