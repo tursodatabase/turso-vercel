@@ -42,7 +42,9 @@
 - **Zero-config databases** &mdash; Databases are created automatically on first use
 - **Local SQLite** &mdash; Fast reads from a local database copy in the serverless function
 - **Remote writes** &mdash; Writes go directly to the remote Turso server, so they're durable immediately
-- **Partial sync** &mdash; Sync only the data you need for efficient cold starts
+- **Partial replication** &mdash; Replicate just the data you need locally to serverless function
+
+If you've used Cloudflare D1 before for SQLite access on serverless, this package provides similar semantics on Vercel Functions.
 
 ## Install
 
