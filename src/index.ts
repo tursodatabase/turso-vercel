@@ -19,10 +19,6 @@ export interface DatabaseOptions {
   remoteWrites?: boolean;
 }
 
-export interface CreateDbOptions extends DatabaseOptions {
-  group?: string;
-}
-
 interface Credentials {
   url: string;
   authToken: string;
@@ -39,6 +35,7 @@ const closeChecks = new Map<TursoDatabase, () => void>();
 
 let apiClient: ReturnType<typeof createClient> | null = null;
 let apiClientOrg: string | null = null;
+let cachedGroupToken: { group: string; jwt: string } | null = null;
 
 // ============================================================================
 // Database Class
@@ -126,7 +123,7 @@ export class TursoDatabase {
 // Public API
 // ============================================================================
 
-export function createDb(name: string, options?: CreateDbOptions): Promise<TursoDatabase> {
+export function createDb(name: string, options?: DatabaseOptions): Promise<TursoDatabase> {
   const existing = instances.get(name);
   if (existing) return existing;
 
@@ -159,24 +156,25 @@ export function createDb(name: string, options?: CreateDbOptions): Promise<Turso
 // Internals
 // ============================================================================
 
-async function initDb(name: string, options?: CreateDbOptions): Promise<TursoDatabase> {
-  const creds = await ensureDb(name, options?.group);
+async function initDb(name: string, options?: DatabaseOptions): Promise<TursoDatabase> {
+  const creds = await ensureDb(name);
   const localPath = join(tmpdir(), `${name}.db`);
   return TursoDatabase.open(name, localPath, creds.url, creds.authToken, options);
 }
 
-async function ensureDb(name: string, group?: string): Promise<Credentials> {
+async function ensureDb(name: string): Promise<Credentials> {
   const cached = credentials.get(name);
   if (cached) return cached;
 
   const client = getClient();
+  const group = requireEnv("TURSO_GROUP");
   let db: { hostname?: string } | undefined;
 
   try {
     db = await client.databases.get(name);
   } catch (err) {
     if (isNotFound(err)) {
-      db = await client.databases.create(name, { group: group ?? "default" });
+      db = await client.databases.create(name, { group });
     } else {
       throw err;
     }
@@ -186,8 +184,12 @@ async function ensureDb(name: string, group?: string): Promise<Credentials> {
     throw new Error(`Failed to get hostname for database: ${name}`);
   }
 
-  const token = await client.databases.createToken(name, { authorization: "full-access" });
-  const creds: Credentials = { url: `libsql://${db.hostname}`, authToken: token.jwt };
+  if (!cachedGroupToken || cachedGroupToken.group !== group) {
+    const token = await client.groups.createToken(group, { authorization: "full-access" });
+    cachedGroupToken = { group, jwt: token.jwt };
+  }
+
+  const creds: Credentials = { url: `libsql://${db.hostname}`, authToken: cachedGroupToken.jwt };
   credentials.set(name, creds);
 
   return creds;

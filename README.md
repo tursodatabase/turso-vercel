@@ -64,21 +64,26 @@ npm install @tursodatabase/vercel-experimental
    turso org list
    ```
 
-3. Add environment variables to your Vercel project:
+3. Create a database group for your project (or use an existing one):
+   ```bash
+   turso group create my-project
+   ```
+
+4. Add environment variables to your Vercel project:
    ```
    TURSO_API_TOKEN=your-api-token
    TURSO_ORG=your-org-slug
-   TURSO_DATABASE=your-database-name
+   TURSO_GROUP=my-project
    ```
 
-> **Important:** Store `TURSO_DATABASE` as a secret environment variable in Vercel, just like your API token. The API token grants access to your entire Turso organization, so if an attacker can control the database name passed to `createDb()`, they could access any database in your org. By keeping the database name in a secret environment variable, you ensure it cannot be injected or tampered with.
+All databases are scoped to the configured group. You can have multiple databases per project, but they can only be created in and accessed from the specified group.
 
 ## Quickstart
 
 ```ts
 import { createDb } from "@tursodatabase/vercel-experimental";
 
-// Get or create a database using the secret database name from environment
+// Get or create a database in the configured group
 const db = await createDb(process.env.TURSO_DATABASE!);
 
 // Create tables
@@ -105,13 +110,13 @@ console.log(result.rows);
 
 ### `createDb(name, options?)`
 
-Creates or retrieves a database instance.
+Creates or retrieves a database instance. The database is scoped to the group configured via `TURSO_GROUP`.
 
 ```ts
-const db = await createDb(process.env.TURSO_DATABASE!, {
-  group: "default",        // Database group (optional)
-});
+const db = await createDb(process.env.TURSO_DATABASE!);
 ```
+
+> **Important:** Store database names passed to `createDb()` as secret environment variables in Vercel. If an attacker can control the database name, they could access any database in the group.
 
 ### `db.query(sql, params?)`
 
