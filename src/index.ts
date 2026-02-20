@@ -133,20 +133,24 @@ export function createDb(name: string, options?: DatabaseOptions): Promise<Turso
 
   promise.then((db) => {
     connections.add(db);
-    waitUntil(
-      new Promise<void>((resolve) => {
-        closeChecks.set(db, resolve);
-        setTimeout(resolve, 5000);
-      }).then(() => {
-        closeChecks.delete(db);
-        if (connections.has(db)) {
-          console.warn(
-            `Database "${db.name}" was not closed. ` +
-              "Call db.close() to ensure writes are pushed and errors are surfaced."
-          );
-        }
-      })
-    );
+    try {
+      waitUntil(
+        new Promise<void>((resolve) => {
+          closeChecks.set(db, resolve);
+          setTimeout(resolve, 5000);
+        }).then(() => {
+          closeChecks.delete(db);
+          if (connections.has(db)) {
+            console.warn(
+              `Database "${db.name}" was not closed. ` +
+                "Call db.close() to ensure writes are pushed and errors are surfaced."
+            );
+          }
+        })
+      );
+    } catch {
+      // waitUntil unavailable outside Vercel Function context (e.g. next build)
+    }
   });
 
   return promise;
